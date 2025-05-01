@@ -31,6 +31,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -46,8 +47,8 @@ const vehicleSchema = new mongoose.Schema({
 });
 
 // Create models
-const User = mongoose.model('User', userSchema);
-const Vehicle = mongoose.model('Vehicle', vehicleSchema, 'vehicles');
+export const User = mongoose.model('User', userSchema);
+export const Vehicle = mongoose.model('Vehicle', vehicleSchema, 'vehicles');
 
 // Auth Routes
 app.post('/api/auth/signup', async (req, res) => {
@@ -104,9 +105,8 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    // Simple password comparison
+    if (user.password != password) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
@@ -122,7 +122,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role: user.role
       }
     });
   } catch (err) {
@@ -182,6 +183,37 @@ app.get('/api/vehicles/:id', async (req, res) => {
   } catch (err) {
     console.error('Error fetching vehicle:', err);
     res.status(500).json({ error: 'Failed to fetch vehicle' });
+  }
+});
+
+// Create admin user endpoint
+app.post('/api/auth/create-admin', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email, role: 'admin' });
+    if (existingAdmin) {
+      return res.status(400).json({ message: 'Admin user already exists' });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create admin user
+    const admin = new User({
+      name,
+      email,
+      password: hashedPassword,
+      role: 'admin'
+    });
+
+    await admin.save();
+    res.status(201).json({ message: 'Admin user created successfully' });
+  } catch (err) {
+    console.error('Create admin error:', err);
+    res.status(500).json({ message: 'Error creating admin user' });
   }
 });
 
